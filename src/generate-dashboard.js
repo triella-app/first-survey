@@ -1328,8 +1328,8 @@ function tryPassword(pwd) {
 // ─── Write output ───────────────────────────────────────────────────────────
 const outDir = path.join(__dirname, '..', 'output');
 if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
-fs.writeFileSync(path.join(outDir, 'dashboard.html'), html, 'utf-8');
-console.log('✓ output/dashboard.html generated (' + embedded.length + ' records)');
+fs.writeFileSync(path.join(outDir, 'index.html'), html, 'utf-8');
+console.log('✓ output/index.html generated (' + embedded.length + ' records)');
 
 // ─── HTML escaping helper ───────────────────────────────────────────────────
 function escHtml(s) {
