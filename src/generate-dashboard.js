@@ -5,8 +5,15 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { parseCSVFile } = require('./csv-parser');
 const { normGender, ageGroup, normRelationship } = require('./normalizers');
+
+// ─── Optional password protection (env var DASHBOARD_PWD) ───────────────────
+const dashPwd = process.env.DASHBOARD_PWD || '';
+const pwdHash = dashPwd
+  ? crypto.createHash('sha256').update(dashPwd).digest('hex')
+  : '';
 
 // ─── Read & parse CSV ───────────────────────────────────────────────────────
 let raw;
@@ -518,6 +525,86 @@ h1,h2,h3,h4,h5,h6 { font-family: 'Space Grotesk','Inter',sans-serif; }
 ::-webkit-scrollbar-thumb { background: rgba(168,85,247,0.3); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(168,85,247,0.5); }
 
+/* ── Lock screen ─────────────────────────────────────────────────────────── */
+.lock-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(165deg, #0f0a1a 0%, #150d2e 30%, #1a1040 60%, #0f0a1a 100%);
+}
+
+.lock-box {
+  background: linear-gradient(135deg, rgba(168,85,247,0.1) 0%, rgba(96,165,250,0.05) 100%);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(168,85,247,0.25);
+  border-radius: 24px;
+  padding: 2.5rem;
+  text-align: center;
+  max-width: 360px;
+  width: 90%;
+}
+
+.lock-icon { font-size: 3rem; margin-bottom: 1rem; }
+
+.lock-box h2 {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 0.5rem;
+}
+
+.lock-box p {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  margin-bottom: 1.5rem;
+}
+
+.lock-input {
+  width: 100%;
+  padding: 0.8rem 1rem;
+  border-radius: 12px;
+  border: 1px solid rgba(168,85,247,0.3);
+  background: rgba(26,18,48,0.6);
+  color: var(--text-primary);
+  font-size: 1rem;
+  font-family: 'Inter', sans-serif;
+  text-align: center;
+  margin-bottom: 1rem;
+  transition: all 0.3s ease;
+}
+
+.lock-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(168,85,247,0.2);
+}
+
+.lock-btn {
+  width: 100%;
+  padding: 0.8rem;
+  border-radius: 12px;
+  border: none;
+  background: linear-gradient(135deg, #a855f7, #7c3aed);
+  color: white;
+  font-size: 1rem;
+  font-weight: 600;
+  font-family: 'Inter', sans-serif;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.lock-btn:hover { opacity: 0.9; transform: translateY(-1px); }
+
+.lock-error {
+  color: var(--red);
+  font-size: 0.85rem;
+  margin-top: 0.8rem;
+  display: none;
+}
+
 /* ── Responsive ──────────────────────────────────────────────────────────── */
 @media (max-width: 768px) {
   .sidebar { display: none; position: fixed; top: 0; left: 0; z-index: 999; height: 100vh; }
@@ -533,9 +620,20 @@ h1,h2,h3,h4,h5,h6 { font-family: 'Space Grotesk','Inter',sans-serif; }
 </head>
 <body>
 
+${pwdHash ? `<div class="lock-screen" id="lockScreen">
+  <div class="lock-box">
+    <div class="lock-icon">🔒</div>
+    <h2>Dashboard protegit</h2>
+    <p>Introdueix la contrasenya per accedir</p>
+    <input class="lock-input" id="lockInput" type="password" placeholder="Contrasenya..." autofocus>
+    <button class="lock-btn" id="lockBtn">Entrar</button>
+    <div class="lock-error" id="lockError">Contrasenya incorrecta</div>
+  </div>
+</div>` : ''}
+
 <button class="sidebar-toggle" id="sidebarToggle" aria-label="Toggle filters">&#9776;</button>
 
-<div class="layout">
+<div class="layout" id="dashLayout" ${pwdHash ? 'style="display:none"' : ''}>
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-title">Filtres</div>
 
@@ -1165,9 +1263,64 @@ window.addEventListener('resize', function() {
   }, 150);
 });
 
-// ─── Initial render ─────────────────────────────────────────────────────────
-initFromURL();
-applyFilters();
+// ─── Password protection ────────────────────────────────────────────────────
+var PWD_HASH = "${pwdHash}";
+
+function sha256(str) {
+  var buf = new TextEncoder().encode(str);
+  return crypto.subtle.digest('SHA-256', buf).then(function(hash) {
+    return Array.from(new Uint8Array(hash)).map(function(b) {
+      return b.toString(16).padStart(2, '0');
+    }).join('');
+  });
+}
+
+function unlock() {
+  var lock = document.getElementById('lockScreen');
+  var layout = document.getElementById('dashLayout');
+  if (lock) lock.style.display = 'none';
+  if (layout) layout.style.display = '';
+  initFromURL();
+  applyFilters();
+}
+
+function tryPassword(pwd) {
+  if (!pwd) return;
+  sha256(pwd).then(function(hash) {
+    if (hash === PWD_HASH) {
+      // Persist pwd in URL so shared links stay authenticated
+      var params = new URLSearchParams(window.location.search);
+      params.set('pwd', pwd);
+      history.replaceState(null, '', window.location.pathname + '?' + params.toString());
+      unlock();
+    } else {
+      var err = document.getElementById('lockError');
+      if (err) err.style.display = 'block';
+    }
+  });
+}
+
+(function initAuth() {
+  if (!PWD_HASH) { unlock(); return; }
+
+  // Check query param
+  var params = new URLSearchParams(window.location.search);
+  var qp = params.get('pwd');
+  if (qp) {
+    sha256(qp).then(function(hash) {
+      if (hash === PWD_HASH) { unlock(); }
+    });
+    return;
+  }
+
+  // Lock screen handlers
+  var btn = document.getElementById('lockBtn');
+  var inp = document.getElementById('lockInput');
+  if (btn) btn.addEventListener('click', function() { tryPassword(inp.value); });
+  if (inp) inp.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') tryPassword(inp.value);
+  });
+})();
 </script>
 </body>
 </html>`;
